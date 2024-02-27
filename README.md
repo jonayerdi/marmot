@@ -1,6 +1,6 @@
 # MarMot: Metamorphic Runtime Monitoring of Autonomous Driving Systems
 This is the code used in the paper "MarMot: Metamorphic Runtime Monitoring of Autonomous
-Driving Systems". For replicating our study, the dataset we use can be found at [https://doi.org/10.5281/zenodo.8202316](https://doi.org/10.5281/zenodo.8202316).
+Driving Systems". For replicating our study, the dataset we use can be found at [https://doi.org/10.5281/zenodo.10716933](https://doi.org/10.5281/zenodo.10716933).
 
 It contains the following artifacts:
 
