@@ -12,32 +12,36 @@ from utils.filter import SimpleARFilter
 from utils.oracle import *
 from utils.sut import load_sut_model
 
-OUT_DIR = join('data', 'verdicts_circuit_1')
+DATA_DIR = join('data', 'dataset_circuit2')
 
-DATA_DIR = join('data', 'dataset_circuit_1')
-THRESHOLDS_DIR = join('data', 'thresholds_circuit_1')
+OUT_DIR = join('data', 'verdicts_circuit2')
 
-ORIGINAL_MODEL_PATH = join('data', 'models', 'tflite_model_mutant_ORIG_0_0.tflite')
-MUTANT_MODEL_PATH = lambda m: join('data', 'models', 'mutants', f'tflite_model_mutant_{m}.tflite')
+MUTANT_MODEL_PATH = lambda mutant, index: join('data', 'ads_models', f'tflite_model_mutant_{mutant}_{index}.tflite')
+ORIGINAL_MODEL_PATH = join('data', 'ads_models', 'tflite_model_withOurData_ruido.tflite')
 
-SO_MODELS_GLOB = 'models_SO_training_data/*E_ALL_*.tflite'
+MUTANT_MODEL_PATH_STOCHASTIC = lambda mutant, index: join('data', 'mcdropout_leorover', f'tflite_model_mutant_{mutant}_{index}.tflite')
+ORIGINAL_MODEL_PATH_STOCHASTIC = MUTANT_MODEL_PATH_STOCHASTIC('ORIG_0', 0)
+
+SO_MODELS_ALL_GLOB = 'data/selforacle_models/*E_ALL_*.tflite'
 SO_MODEL_TYPE = lambda name: split(name)[1][:3]
 
+#REGEX_MUTANT_DATA = re.compile(r'^([(HLR)|(HNE)|(TAN)].+)$')
 REGEX_MUTANT_DATA = re.compile(r'^data_m_(.+)$')
-def SUT_MODEL_PATH(data_dir, index=None):
+def SUT_MODEL_PATH(data_dir, index=None, stochastic=False):
+    mutant_model_path = MUTANT_MODEL_PATH_STOCHASTIC if stochastic else MUTANT_MODEL_PATH
+    original_model_path = ORIGINAL_MODEL_PATH_STOCHASTIC if stochastic else ORIGINAL_MODEL_PATH
     match = REGEX_MUTANT_DATA.match(data_dir)
     if match:
         mutant = match.group(1)
-        if mutant.startswith('good_'):
-            mutant = mutant[len('good_'):]
-        if index is not None:
-            mutant = '_'.join(mutant.split('_')[:-1]) + f'_{index}'
-        return MUTANT_MODEL_PATH(mutant)
+        if index is None:
+            index = mutant.split('_')[-1]
+        mutant = '_'.join(mutant.split('_')[:-1])
+        return mutant_model_path(mutant, index)
     else:
         if index is not None:
-            return MUTANT_MODEL_PATH(f'ORIG_0_{index}')
+            return mutant_model_path('ORIG_0', index)
         else:
-            return ORIGINAL_MODEL_PATH
+            return original_model_path
 
 SUT_MODELS = {}
 def SUT_MODEL(path):
@@ -45,26 +49,26 @@ def SUT_MODEL(path):
         SUT_MODELS[path] = load_sut_model(path)
     return SUT_MODELS[path]
 
-IS_DATASET_GOOD = lambda d: d in set((f'data_good.group{i}' for i in range(1, 31)))
-IS_DATASET_MUTANT = lambda d: d.startswith('data_m_')
-IS_DATASET_ANOMALY = lambda d: d.startswith('data_a_')
-
-DATASETS = sorted(map(
-    lambda d: Dataset(data_dir=join(DATA_DIR, d)),
-    filter(
-        lambda d: IS_DATASET_ANOMALY(d) or IS_DATASET_MUTANT(d) or IS_DATASET_GOOD(d),
-        #lambda d: IS_DATASET_MUTANT(d),
-        #lambda d: 'good' in d,
-        #lambda d: d == 'data_good' or d.startswith('data_a_') or d.startswith('data_m_'),
-        listdir(DATA_DIR)
-    )
-), key=lambda d: d.data_dir)
+DATASET_NAMES = [
+    'AnomaliesPass',
+    'EnvironmentalAnomaliesFail',
+    'EnvironmentalAnomaliesPass',
+    'MutantsPass',
+    'NominalAnomaliesFailMutantsFail',
+]
+DATASETS = {
+    name: sorted((Dataset(data_dir=join(DATA_DIR, name, d)) for d in filter(lambda d: True, listdir(join(DATA_DIR, name)))), key=lambda d: d.data_dir)
+    for name in DATASET_NAMES
+}
 
 FILTER = SimpleARFilter()
 
+ORACLES_MCDROPOUT = [
+    MCDropoutOracle(sut_model_path=ORIGINAL_MODEL_PATH_STOCHASTIC, num_samples=16),
+]
 ORACLES_ENSEMBLE = [
     EnsembleOracle(sut_model_paths=[
-        f'data/models/mutants/tflite_model_mutant_ORIG_0_{index}.tflite'
+        MUTANT_MODEL_PATH('ORIG_0', index)
         for index in range(10)
     ]),
 ]
@@ -74,48 +78,53 @@ ORACLES_MR = [
 ]
 ORACLES_SO_ALL = [
     SelfOracle(model_path=model_path, model_type=SO_MODEL_TYPE(model_path), img_processing='selforacle') 
-    for model_path in glob(SO_MODELS_GLOB)
+    for model_path in glob(SO_MODELS_ALL_GLOB)
 ]
 
 ORACLES = [
     *ORACLES_MR,
     *ORACLES_ENSEMBLE,
     *ORACLES_SO_ALL,
+    *ORACLES_MCDROPOUT,
 ]
 
 def oracle_out_file(oracle):
     clazz = oracle.__class__
     name = clazz.__name__
     return {
+        MCDropoutOracle: lambda: f'{name}.verdicts.bin',
         EnsembleOracle: lambda: f'{name}.verdicts.bin',
         MROracle: lambda: f'{name}.{oracle.mr}.verdicts.bin',
         SelfOracle: lambda: f'{name}.{oracle}.verdicts.bin',
     }[clazz]()
 
-makedirs(OUT_DIR, exist_ok=True)
-
 for oracle in ORACLES:
-    OUT_FILE = join(OUT_DIR, oracle_out_file(oracle))
-    if not isfile(OUT_FILE):
-        with open(OUT_FILE, mode='wb') as fp:
-            for dataset in DATASETS:
-                data_dir = split(dataset.data_dir)[1]
-                fp.write(data_dir.encode('utf-8'))
-                fp.write('\n'.encode('utf-8'))
-                if type(oracle) == MROracle:
-                    oracle.sut_model = SUT_MODEL(SUT_MODEL_PATH(data_dir))
-                elif type(oracle) == EnsembleOracle:
-                    oracle.sut_models = [
-                        SUT_MODEL(SUT_MODEL_PATH(data_dir, index))
-                        for index in range(10)
-                    ]
-                verdicts = list(verdicts_dataset(
-                    oracle=oracle,
-                    filter=FILTER,
-                    dataset=dataset,
-                ))
-                fp.write(struct.pack('<L', len(verdicts)))
-                for verdict in verdicts:
-                    fp.write(struct.pack('<f', verdict))
-                oracle.reset()
-                FILTER.reset()
+    for dataset_group in DATASETS:
+        makedirs(join(OUT_DIR, dataset_group), exist_ok=True)
+        OUT_FILE = join(OUT_DIR, dataset_group, oracle_out_file(oracle))
+        if not isfile(OUT_FILE):
+            with open(OUT_FILE, mode='wb') as fp:
+                for dataset in DATASETS[dataset_group]:
+                    data_dir = split(dataset.data_dir)[1]
+                    print(data_dir)
+                    fp.write(data_dir.encode('utf-8'))
+                    fp.write('\n'.encode('utf-8'))
+                    if type(oracle) == MROracle:
+                        oracle.sut_model = SUT_MODEL(SUT_MODEL_PATH(data_dir))
+                    elif type(oracle) == EnsembleOracle:
+                        oracle.sut_models = [
+                            SUT_MODEL(SUT_MODEL_PATH(data_dir, index))
+                            for index in range(10)
+                        ]
+                    elif type(oracle) == MCDropoutOracle:
+                        oracle.sut_model = SUT_MODEL(SUT_MODEL_PATH(data_dir, index=0, stochastic=True))
+                    verdicts = list(verdicts_dataset(
+                        oracle=oracle,
+                        filter=FILTER,
+                        dataset=dataset,
+                    ))
+                    fp.write(struct.pack('<L', len(verdicts)))
+                    for verdict in verdicts:
+                        fp.write(struct.pack('<f', verdict))
+                    oracle.reset()
+                    FILTER.reset()
