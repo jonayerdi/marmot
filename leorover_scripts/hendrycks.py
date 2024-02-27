@@ -127,7 +127,7 @@ def clipped_zoom(img, zoom_factor):
 # /////////////// Distortions ///////////////
 
 def gaussian_noise(x, severity=1):
-    c = [.08, .12, 0.18, 0.26, 0.38][severity - 1]
+    c = [.05, .08, .12, 0.18, 0.26, 0.38][severity]
 
     x = np.array(x) / 255.
 
@@ -135,7 +135,7 @@ def gaussian_noise(x, severity=1):
 
 
 def shot_noise(x, severity=1):
-    c = [60, 25, 12, 5, 3][severity - 1]
+    c = [150, 60, 25, 12, 5, 3][severity]
 
     x = np.array(x) / 255.
     return np.clip(np.random.poisson(x * c) / c, 0, 1) * 255
@@ -149,7 +149,7 @@ def impulse_noise(x, severity=1):
 
 
 def speckle_noise(x, severity=1):
-    c = [.15, .2, 0.35, 0.45, 0.6][severity - 1]
+    c = [.08, .15, .2, 0.35, 0.45, 0.6][severity]
 
     x = np.array(x) / 255.
     return np.clip(x + x * np.random.normal(size=x.shape, scale=c), 0, 1) * 255
@@ -216,7 +216,7 @@ def fog(x, severity=1):
     return np.clip(x * max_val / (max_val + c[0]), 0, 1) * 255
 
 def spatter(x, severity=1):
-    c = [(0.65, 0.3, 4, 0.69, 0.6, 0),
+    c = [(0.65, 0.3, 3, 0.69, 0.6, 0),
          (0.65, 0.3, 3, 0.68, 0.6, 0),
          (0.65, 0.3, 2, 0.68, 0.5, 0),
          (0.65, 0.3, 1, 0.65, 1.5, 1),
@@ -271,7 +271,7 @@ def spatter(x, severity=1):
 
 
 def contrast(x, severity=1):
-    c = [0.4, .3, .2, .1, .05][severity - 1]
+    c = [0.6, 0.4, .3, .2, .1, .05][severity]
 
     x = np.array(x) / 255.
     means = np.mean(x, axis=(0, 1), keepdims=True)

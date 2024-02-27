@@ -1,0 +1,13 @@
+Brightness,3,5
+Contrast,1,3
+DefocusBlur,3,5
+Fog,3,5
+GaussianBlur,3,5
+GaussianNoise,1,3
+ImpulseNoise,3,5
+JPEG,3,5
+Pixelate,3,5
+Saturate,3,5
+ShotNoise,1,3
+Spatter,2,3
+SpeckleNoise,1,3

@@ -16,6 +16,10 @@ LF_IMAGE_HEIGHT, LF_IMAGE_WIDTH, LF_IMAGE_CHANNELS = 120, 160, 1
 LF_IMAGE_SHAPE = (LF_IMAGE_HEIGHT, LF_IMAGE_WIDTH, LF_IMAGE_CHANNELS)
 HSV_MIN, HSV_MAX = (2, 0, 36), (35, 255, 255)
 
+# Dave2 image dimensions
+DAVE2_IMAGE_HEIGHT, DAVE2_IMAGE_WIDTH = 80, 160
+DAVE2_IMAGE_HEIGHT2, DAVE2_IMAGE_WIDTH2 = 160, 320
+
 def simple_mask(img, hsv_min, hsv_max):
     return cv2.inRange(img, hsv_min, hsv_max,)
 
@@ -156,6 +160,29 @@ def preprocess_selforacle(img, rgb=False):
         return img, cv2.cvtColor(img, cv2.COLOR_YUV2RGB)
     return img
 
+def preprocess_selforacle_dave2(img, rgb=False):
+    # Convert color format
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+    # Crop
+    img = img[60:-25, :, :] # remove the sky and the car front
+    # Resize
+    img = cv2.resize(img, (SO_IMAGE_WIDTH, SO_IMAGE_HEIGHT), cv2.INTER_AREA)
+    # Normalize: This should already be done by AnomalyDetector.normalize_and_reshape
+    #img = img / 255.0
+    # Done
+    if rgb:
+        return img, cv2.cvtColor(img, cv2.COLOR_YUV2RGB)
+    return img
+
+def preprocess_dave2(img, rgb=False, size=(DAVE2_IMAGE_WIDTH, DAVE2_IMAGE_HEIGHT)):
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+    img = img[60:-25, :, :]  # remove the sky and the car front
+    img = cv2.resize(img, size, cv2.INTER_AREA)
+    img = img.astype('float32')
+    if rgb:
+        return img, cv2.cvtColor(img, cv2.COLOR_YUV2RGB)
+    return img
+
 IMG_PROCESSING = {
     'null': preprocess_null,
     'bgr': preprocess_bgr,
@@ -166,6 +193,9 @@ IMG_PROCESSING = {
     'leorover': preprocess_leorover,
     'selforacle': preprocess_selforacle,
     'selforacle_mask': preprocess_selforacle_mask,
+    'selforacle_dave2': preprocess_selforacle_dave2,
+    'dave2': preprocess_dave2,
+    'dave2large': lambda img, rgb: preprocess_dave2(img=img, rgb=rgb, size=(DAVE2_IMAGE_WIDTH2, DAVE2_IMAGE_HEIGHT2)),
 }
 
 def process_image(image, processing=None, rgb=False):

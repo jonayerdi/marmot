@@ -92,3 +92,71 @@ class Dataset:
     def iter_images(self, processing=None):
         for image in self.images:
             yield split(image)[1], load_image(image_path=image, processing=processing)
+
+'''
+Classes for "ThirdEye: Attention Maps for Safe Autonomous Driving Systems" dataset by Stocco et al. (ASE 2022):
+https://github.com/tsigalko18/ase22
+'''
+
+class EventsASE2022(Events):
+    @staticmethod
+    def get_events(lines, separator=','):
+        if lines:
+            headers = next(lines).strip().split(separator)
+            h_center = headers.index('center')
+            try:
+                h_crashed = headers.index('crashed')
+            except:
+                h_crashed = None
+            try:
+                h_tot_OBEs = headers.index('tot_OBEs')
+            except:
+                h_tot_OBEs = None
+            try:
+                h_tot_crashes = headers.index('tot_crashes')
+            except:
+                h_tot_crashes = None
+            crashed = 0
+            tot_OBEs = 0
+            tot_crashes = 0
+            for line in lines:
+                data = line.strip().split(separator)
+                if len(data) > 1:
+                    image = split(data[h_center])[1]
+                    if h_crashed is not None:
+                        crashed_new = int(data[h_crashed])
+                        if crashed_new != crashed:
+                            crashed = crashed_new
+                            evt = 'oob' if crashed else 'recover'
+                            yield (evt, image)
+                    if h_tot_OBEs is not None:
+                        obes = int(data[h_tot_OBEs])
+                        if obes > tot_OBEs:
+                            tot_OBEs = obes
+                            yield ('tot_OBEs', image)
+                    if h_tot_crashes is not None:
+                        crashes = int(data[h_tot_crashes])
+                        if crashes > tot_crashes:
+                            tot_crashes = crashes
+                            yield ('tot_crashes', image)
+    @staticmethod
+    def from_file(file):
+        if type(file) is str:
+            try:
+                with open(file, mode='r') as fp:
+                    return EventsASE2022.from_file(fp)
+            except FileNotFoundError:
+                return EventsASE2022(events=[])
+        return EventsASE2022(events=EventsASE2022.get_events(lines=iter(file)))
+
+class DatasetASE2022(Dataset):
+    def __init__(self, data_dir, image_files=lambda f: f.endswith('.jpg'), events_file='driving_log.csv') -> None:
+        self.data_dir = data_dir
+        if events_file is not None:
+            self.events = EventsASE2022.from_file(join(self.data_dir, events_file))
+        else:
+            self.events = EventsASE2022(events=[])
+        if image_files is not None:
+            self.images = sorted(get_images(join(self.data_dir, 'IMG'), images_filter=image_files), key=alphanum_key)
+        else:
+            self.images = []

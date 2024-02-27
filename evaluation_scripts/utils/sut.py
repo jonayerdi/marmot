@@ -54,14 +54,20 @@ def keras2tflite(model):
     return tflite_interpreter
 
 def load_sut_model(model_path):
-    tflite_interpreter = tf.lite.Interpreter(model_path=model_path)
-    tflite_interpreter.allocate_tensors()
-    return tflite_interpreter
+    if model_path.endswith('.tflite'):
+        tflite_interpreter = tf.lite.Interpreter(model_path=model_path)
+        tflite_interpreter.allocate_tensors()
+        return tflite_interpreter
+    else:
+        return tf.keras.models.load_model(model_path)
+    
+def execute_sut_model(model, image):
+    if issubclass(type(model), tf.lite.Interpreter):
+        return execute_sut_model_tflite(model, image)
+    else:
+        return execute_sut_model_keras(model, image)
 
-def load_sut_model_keras(model_path):
-    return tf.keras.models.load_model(model_path)
-
-def execute_sut_model(tflite_interpreter, image):
+def execute_sut_model_tflite(tflite_interpreter, image):
     if issubclass(type(image), tf.keras.utils.Sequence): # TODO: I think this is not needed, remove
         results = []
         for batch in image:
@@ -73,9 +79,14 @@ def execute_sut_model(tflite_interpreter, image):
         output_details = tflite_interpreter.get_output_details()
         tflite_interpreter.set_tensor(input_details[0]["index"], [image])
         tflite_interpreter.invoke()
-        linear_x = tflite_interpreter.get_tensor(output_details[0]["index"])[0][0]
-        angular_z = tflite_interpreter.get_tensor(output_details[1]["index"])[0][0]
-        return angular_z # TODO: Consider all outputs, not just the angle?
+        if len(output_details) > 1:
+            # LeoRover
+            linear_x = tflite_interpreter.get_tensor(output_details[0]["index"])[0][0]
+            angular_z = tflite_interpreter.get_tensor(output_details[1]["index"])[0][0]
+            return angular_z # TODO: Consider all outputs, not just the angle?
+        else:
+            # Dave2
+            return tflite_interpreter.get_tensor(output_details[0]["index"])[0][0]
 
 def execute_sut_model_keras(model, image):
     if issubclass(type(image), tf.keras.utils.Sequence): # TODO: I think this is not needed, remove
@@ -85,5 +96,11 @@ def execute_sut_model_keras(model, image):
                 results.append(execute_sut_model_keras(model, image=img[0].astype(np.float32)))
         return results
     else:
-        # TODO: Consider all outputs, not just the angle?
-        return model.predict(image, verbose=0)[1][0][0]
+        if image.shape[0] not in [None, -1]:
+            image = image.reshape(-1, *image.shape) # Tensorflow nonsense to identify sequences VS individual inputs
+        #return float(model.predict(image, batch_size=1))
+        result = model.predict(image, verbose=0)
+        if max(result.shape) <= 1:
+            return float(result)
+        else:
+            return result[1][0][0] # Steering angle

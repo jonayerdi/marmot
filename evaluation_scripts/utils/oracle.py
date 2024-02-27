@@ -61,6 +61,16 @@ class EnsembleOracle(StochasticOracle):
         from utils.sut import execute_sut_model
         return [execute_sut_model(sut, img) for sut in self.sut_models]
     
+class MCDropoutOracle(StochasticOracle):
+    def __init__(self, sut_model_path, num_samples, **kwargs):
+        from utils.sut import load_sut_model
+        super().__init__(**kwargs)
+        self.num_samples = num_samples
+        self.sut_model = load_sut_model(sut_model_path)
+    def get_predictions(self, img):
+        from utils.sut import execute_sut_model
+        return [execute_sut_model(self.sut_model, img) for _ in range(self.num_samples)]
+
 class SelfOracle(Oracle):
     def __init__(self, model_path, model_type, img_processing='selforacle', **kwargs):
         from os.path import split, splitext
@@ -124,6 +134,7 @@ def init_oracle(args):
     return {
         'NullOracle': lambda: NullOracle(verdict_value=0.0),
         'EnsembleOracle': lambda: EnsembleOracle(sut_model_paths=glob(args[1])),
+        'MCDropoutOracle': lambda: MCDropoutOracle(sut_model_path=args[1], num_samples=int(args[2])),
         'SelfOracle': lambda: SelfOracle(model_path=args[1], model_type=args[2], img_processing=args[3]),
         'MROracle': lambda: MROracle(mr=MROracle.init_mr(args[1:-2]), sut_model_path=args[-2], img_processing=args[-1]),
     }[args[0]]()
